@@ -17,7 +17,7 @@ sudo rmmod main.ko; sudo dmesg | tail -n 1
 3. Update `linux-5.16/Makefile`
     - Update `core-y			+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ my_syscall/`
 4. Update `arch/x86/entry/syscalls/syscall_64.tbl`
-    - Add `450 64      my_syscall      my_syscall` after the last row before 512
+    - Add `450 common  my_syscall      my_syscall` after the last row before 512
 5. Update `include/linux/syscalls.h`
     - Add `asmlinkage long my_syscall(void);` to the end of the file right before the `#endif`
 6. Update `include/uapi/asm-generic/unistd.h`
