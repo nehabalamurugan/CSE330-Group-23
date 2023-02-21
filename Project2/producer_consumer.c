@@ -1,12 +1,18 @@
 // CSE 330 Project 2
 // Group 23
 
+#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
-#include <linux/kernel.h>
+
+
+#define AUTHORS     "Punit Sai Arani, Neha Balamurugan, Siddhesh Nair, Arnav Sangelkar"
+#define DESCRIPTION "Project 2"
 
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR(AUTHORS);
+MODULE_DESCRIPTION(DESCRIPTION);
 
 
 // Default params
