@@ -5,7 +5,6 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 
-
 #define AUTHORS     "Punit Sai Arani, Neha Balamurugan, Siddhesh Nair, Arnav Sangelkar"
 #define DESCRIPTION "Project 2"
 
@@ -16,10 +15,10 @@ MODULE_DESCRIPTION(DESCRIPTION);
 
 
 // Default params
-static int buffSize = 1024;
-static int prod = 1;
-static int cons = 1;
-static uid_t uuid = -1;
+static int buffSize = 0;
+static int prod = 0;
+static int cons = 0;
+static uid_t uuid = 0;
 
 // Define params
 module_param(buffSize, int, 0644);  // The buffer size
