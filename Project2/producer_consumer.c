@@ -2,6 +2,7 @@
 // Group 23
 
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/sched.h>
@@ -39,6 +40,7 @@ struct semaphore mutex;
 
 // Counters
 size_t task_count = 0;
+long program_start_time = 0;
 
 
 // Task structs
@@ -160,8 +162,40 @@ int init_module(void) {
     sema_init(&full, 0);
     sema_init(&mutex, 1);
 
+    // Start the producer thread
+    producers = kthread_run(producer, NULL, "Producer-1");
+
+    // Start the consumer threads
+    for (int i = 0; i < cons; i++) {
+        char name[12];
+        sprintf(name, "Consumer-%d", i + 1);
+        consumers = kthread_run(consumer, NULL, name);
+    }
+
+    // Set the program start time
+    program_start_time = ktime_get_ns();
+    
     return 0;
 }
 
 
-void cleanup_module(void) {}
+void cleanup_module(void) {
+    long elapsed, hours, minutes, seconds;
+
+    // Stop the producer thread
+    kthread_stop(producers);
+
+    // Stop the consumer threads
+    for (int i = 0; i < cons; i++) {
+        kthread_stop(consumers);
+    }
+
+    // Calculate the elapsed time
+    elapsed = ktime_get_ns() - program_start_time;
+    hours   = elapsed / 3600000000000;
+    minutes = (elapsed % 3600000000000) / 60000000000;
+    seconds = ((elapsed % 3600000000000) % 60000000000) / 1000000000;
+
+    // Print program info
+    printk(KERN_INFO "The total elapsed time of all processes for UID %d is %zu:%zu:%zu", uuid, hours, minutes, seconds);
+}
