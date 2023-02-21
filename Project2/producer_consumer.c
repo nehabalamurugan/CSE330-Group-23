@@ -114,6 +114,46 @@ static int producer(void *arg) {
 }
 
 
+static int consumer(void *data) {
+    Node node;
+    long hours, minutes, seconds;
+
+    // Run until buffer is empty
+    while (true) {
+        while (buffSize) {
+            // Semaphore down
+            down_interruptible(&full);
+            down_interruptible(&mutex);
+
+            // Pop node from buffer
+            node = buffer->node;
+            buffer = buffer->next;
+
+            // Find the process and calculate elapsed time
+            for_each_process(consumers) {
+                if (consumers->pid == node.pid) {
+                    node.time = ktime_get_ns() - consumers->start_time;
+                }
+            }
+
+            // Convert nanoseconds to hours, minutes, and seconds
+            hours   = node.time / 3600000000000;
+            minutes = (node.time % 3600000000000) / 60000000000;
+            seconds = ((node.time % 3600000000000) % 60000000000) / 1000000000;
+
+            // Print process info
+            printk(KERN_INFO "Consumer-1 Consumed Item#-%d on buffer index: %d PID:%zu Elapsed Time- %zu:%zu:%zu", node.item_num, node.pid, node.time, hours, minutes, seconds);
+
+            // Semaphore up
+            up(&mutex);
+            up(&empty);
+        }
+    }
+
+    return 0;
+}
+
+
 int init_module(void) {
     // Initialize semaphores
     sema_init(&empty, buffSize);
