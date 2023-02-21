@@ -4,6 +4,8 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/semaphore.h>
+
 
 #define AUTHORS     "Punit Sai Arani, Neha Balamurugan, Siddhesh Nair, Arnav Sangelkar"
 #define DESCRIPTION "Project 2"
@@ -27,7 +29,18 @@ module_param(cons, int, 0644);      // number of consumers(a non-negative number
 module_param(uuid, int, 0644);      // The UID of the user
 
 
+// Semaphores
+struct semaphore empty;
+struct semaphore full;
+struct semaphore mutex;
+
+
 int init_module(void) {
+    // Initialize semaphores
+    sema_init(&empty, buffSize);
+    sema_init(&full, 0);
+    sema_init(&mutex, 1);
+
     return 0;
 }
 
