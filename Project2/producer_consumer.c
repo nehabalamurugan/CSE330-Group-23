@@ -36,7 +36,6 @@ struct semaphore mutex;
 
 // Counters
 size_t task_count = 0;
-int count1 = 0;
 
 // Task structs
 typedef struct task_struct TaskStruct;
@@ -113,11 +112,7 @@ static int consumer(void *consumerData) {
 
   // Consumer will run in a infinite loop unlike the producer
   while (1) {
-
     while (buffSize > 0) {
-
-      count1++;
-
       // Semaphore Updates
       down_interruptible(&full);
       down_interruptible(&mutex);
@@ -185,7 +180,6 @@ static int __init init_func(void) {
 }
 
 static void __exit exit_func(void) {
-  // Converted elapsed into human readable time
   int elapsed = tTime;
   int hour = elapsed / 3600000000000;
   elapsed = elapsed % 3600000000000;
