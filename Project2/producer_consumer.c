@@ -56,10 +56,8 @@ typedef struct node {
 
 // Buffer
 Node buffer[1000];
-
-// Buffer position trackers
-int in = 0;
-int out = 0;
+int buffer_head = 0;
+int buffer_tail = 0;
 
 // Global Time
 u64 tTime = 0;
@@ -90,12 +88,12 @@ static int producer(void *arg) {
 
       // Update Total Time so that we can present it when the module is unloaded
 
-      buffer[in] = temp;
+      buffer[buffer_head] = temp;
 
       printk(KERN_INFO
              "[Producer-1] Produced Item#-%zu at buffer index: %d for PID: %d",
-             task_count, in, task->pid);
-      in = in + 1;
+             task_count, buffer_head, task->pid);
+      buffer_head = buffer_head + 1;
 
       // Semaphore Updates
       up(&mutex);
@@ -110,14 +108,14 @@ static int producer(void *arg) {
 
 static int consumer(void *consumerData) {
 
-  // Consumer will run in a infinite loop unlike the producer
+  // Consumer will run buffer_head a infinite loop unlike the producer
   while (1) {
     while (buffSize > 0) {
       // Semaphore Updates
       down_interruptible(&full);
       down_interruptible(&mutex);
 
-      Node consume = buffer[out];
+      Node consume = buffer[buffer_tail];
 
       // Find when when this particular task was started and then assign it
       for_each_process(consumers) {
@@ -133,10 +131,10 @@ static int consumer(void *consumerData) {
       elapsed = elapsed % 60000000000;
       int second = elapsed / 1000000000;
 
-      out = (out++) % buffSize;
+      buffer_tail = (buffer_tail++) % buffSize;
       printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %d "
                        "PID:%d Elapsed Time- %d:%d:%d",
-             consume.itemNum, out, consume.pid, hour, minute, second);
+             consume.itemNum, buffer_tail, consume.pid, hour, minute, second);
 
       // Semaphore Updates
       up(&mutex);
