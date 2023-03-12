@@ -46,16 +46,16 @@ TaskStruct *consumers;
 int error;
 
 // Struct Node
-struct node {
+typedef struct node {
   int pid;
   int uuid;
   int time;
   int timeStart;
   int itemNum;
-};
+} Node;
 
 // Buffer
-struct node buffer[1000];
+Node buffer[1000];
 
 // Buffer position trackers
 int in = 0;
@@ -65,7 +65,7 @@ int out = 0;
 u64 tTime = 0;
 
 static int producer(void *arg) {
-  struct node temp;
+  Node temp;
 
   TaskStruct *task;
   // Debug Tools
@@ -117,7 +117,7 @@ static int consumer(void *consumerData) {
       down_interruptible(&full);
       down_interruptible(&mutex);
 
-      struct node consume = buffer[out];
+      Node consume = buffer[out];
 
       // Find when when this particular task was started and then assign it
       for_each_process(consumers) {
