@@ -56,8 +56,8 @@ typedef struct node {
 
 // Buffer
 Node buffer[1000];
-int buffer_head = 0;
-int buffer_tail = 0;
+size_t buffer_head = 0;
+size_t buffer_tail = 0;
 
 // Global Time
 u64 tTime = 0;
@@ -91,9 +91,9 @@ static int producer(void *arg) {
       buffer[buffer_head] = temp;
 
       printk(KERN_INFO
-             "[Producer-1] Produced Item#-%zu at buffer index: %d for PID: %d",
+             "[Producer-1] Produced Item#-%zu at buffer index: %zu for PID: %d",
              task_count, buffer_head, task->pid);
-      buffer_head = buffer_head + 1;
+      buffer_head ++;
 
       // Semaphore Updates
       up(&mutex);
@@ -132,7 +132,7 @@ static int consumer(void *consumerData) {
       int second = elapsed / 1000000000;
 
       buffer_tail = (buffer_tail++) % buffSize;
-      printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %d "
+      printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %zu "
                        "PID:%d Elapsed Time- %d:%d:%d",
              consume.itemNum, buffer_tail, consume.pid, hour, minute, second);
 
