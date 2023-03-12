@@ -93,7 +93,7 @@ static int producer(void *arg) {
       buffer[in] = temp;
 
       printk(KERN_INFO
-             "[Producer-1] Produced Item#-%d at buffer index: %d for PID: %d",
+             "[Producer-1] Produced Item#-%zu at buffer index: %d for PID: %d",
              task_count, in, task->pid);
       in = in + 1;
 
