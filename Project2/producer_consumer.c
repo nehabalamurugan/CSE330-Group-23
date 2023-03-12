@@ -60,7 +60,7 @@ size_t buffer_head = 0;
 size_t buffer_tail = 0;
 
 // Global Time
-u64 tTime = 0;
+size_t global_time = 0;
 
 static int producer(void *arg) {
   Node temp;
@@ -124,12 +124,10 @@ static int consumer(void *consumerData) {
         }
       }
 
-      int elapsed = consume.time;
-      int hour = elapsed / 3600000000000;
-      elapsed = elapsed % 3600000000000;
-      int minute = elapsed / 60000000000;
-      elapsed = elapsed % 60000000000;
-      int second = elapsed / 1000000000;
+      int time = consume.time;
+      int hour = time / 3600000000000;
+      int minute = (time % 3600000000000) / 60000000000;
+      int second = (time % 60000000000) / 1000000000;
 
       buffer_tail = (buffer_tail++) % buffSize;
       printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %zu "
@@ -178,12 +176,10 @@ static int __init init_func(void) {
 }
 
 static void __exit exit_func(void) {
-  int elapsed = tTime;
-  int hour = elapsed / 3600000000000;
-  elapsed = elapsed % 3600000000000;
-  int minute = elapsed / 60000000000;
-  elapsed = elapsed % 60000000000;
-  int second = elapsed / 1000000000;
+  int time = global_time;
+  int hour = time / 3600000000000;
+  int minute = (time % 3600000000000) / 60000000000;
+  int second = (time % 60000000000) / 1000000000;
 
   printk(KERN_INFO
          "The total elapsed time for all processes for UID %d is %d:%d:%d\n",
