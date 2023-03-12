@@ -38,8 +38,12 @@ struct semaphore mutex;
 size_t task_count = 0;
 int count1 = 0;
 
-struct task_struct *producers;
-struct task_struct *consumers;
+// Task structs
+typedef struct task_struct TaskStruct;
+TaskStruct *producers;
+TaskStruct *consumers;
+
+// Error variable
 int error;
 
 // Struct Node
@@ -64,7 +68,7 @@ u64 tTime = 0;
 static int producer(void *arg) {
   struct node temp;
 
-  struct task_struct *task;
+  TaskStruct *task;
   // Debug Tools
   // printk(KERN_INFO "PRODUCER STARTED");
   // printk(KERN_INFO "%d", buffSize);
