@@ -10,7 +10,8 @@
 #include <linux/semaphore.h>
 #include <linux/types.h>
 
-#define AUTHORS "Punit Sai Arani, Neha Balamurugan, Siddhesh Nair, Arnav Sangelkar"
+#define AUTHORS                                                                \
+  "Punit Sai Arani, Neha Balamurugan, Siddhesh Nair, Arnav Sangelkar"
 #define DESCRIPTION "Project 2"
 
 MODULE_LICENSE("GPL");
@@ -63,68 +64,66 @@ size_t buffer_tail = 0;
 size_t global_time = 0;
 
 static int producer(void *arg) {
-  Node temp;
-
+  Node produced;
   TaskStruct *task;
-  // Debug Tools
-  // printk(KERN_INFO "PRODUCER STARTED");
-  // printk(KERN_INFO "%d", buffSize);
 
   for_each_process(task) {
     if (task->cred->uid.val == uuid) {
-
       task_count++;
 
-      // Semaphore Updates
+      // Update the empty and mutex semaphores
+      // This locks the buffer
       down_interruptible(&empty);
       down_interruptible(&mutex);
 
-      // assign values of the current producer task to temp
-      temp.pid = task->pid;
-      temp.itemNum = task_count;
-      temp.uuid = producers->cred->uid.val;
-      temp.time = 0;
-      temp.timeStart = producers->start_time;
+      // Build the the produced node
+      produced.pid = task->pid;
+      produced.itemNum = task_count;
+      produced.uuid = producers->cred->uid.val;
+      produced.time = 0;
+      produced.timeStart = producers->start_time;
 
-      // Update Total Time so that we can present it when the module is unloaded
+      // TODO: Update Total Time so that we can present it when the module is
+      // unloaded
 
-      buffer[buffer_head] = temp;
+      // Add the produced node to the buffer
+      buffer[buffer_head] = produced;
+      buffer_head++;
 
+      // Print the produced item information to the kernel log
       printk(KERN_INFO
              "[Producer-1] Produced Item#-%zu at buffer index: %zu for PID: %d",
              task_count, buffer_head, task->pid);
-      buffer_head ++;
 
-      // Semaphore Updates
+      // Update the mutex and full semaphores
+      // This unlocks the buffer
       up(&mutex);
       up(&full);
     }
   }
-  // Debug Tools
-  // printk(KERN_INFO "PRODUCER DONE");
-
   return 0;
 }
 
 static int consumer(void *consumerData) {
-
-  // Consumer will run buffer_head a infinite loop unlike the producer
+  // Run the consumer task forever
+  // Monitors the buffer and consumes items as they are produced
   while (1) {
     while (buffSize > 0) {
-      // Semaphore Updates
+      // Update the full and mutex semaphores
+      // This locks the buffer
       down_interruptible(&full);
       down_interruptible(&mutex);
 
-      Node consume = buffer[buffer_tail];
+      Node consumed = buffer[buffer_tail];
 
       // Find when when this particular task was started and then assign it
       for_each_process(consumers) {
-        if (consumers->pid == consume.pid) {
-          consume.time = ktime_get_ns() - consumers->start_time;
+        if (consumers->pid == consumed.pid) {
+          consumed.time = ktime_get_ns() - consumers->start_time;
         }
       }
 
-      int time = consume.time;
+      int time = consumed.time;
       int hour = time / 3600000000000;
       int minute = (time % 3600000000000) / 60000000000;
       int second = (time % 60000000000) / 1000000000;
@@ -132,9 +131,10 @@ static int consumer(void *consumerData) {
       buffer_tail = (buffer_tail++) % buffSize;
       printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %zu "
                        "PID:%d Elapsed Time- %d:%d:%d",
-             consume.itemNum, buffer_tail, consume.pid, hour, minute, second);
+             consumed.itemNum, buffer_tail, consumed.pid, hour, minute, second);
 
-      // Semaphore Updates
+      // Update the mutex and empty semaphores
+      // This unlocks the buffer
       up(&mutex);
       up(&empty);
     }
