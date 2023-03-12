@@ -10,28 +10,24 @@
 #include <linux/semaphore.h>
 #include <linux/types.h>
 
-
-#define AUTHORS     "Punit Sai Arani, Neha Balamurugan, Siddhesh Nair, Arnav Sangelkar"
+#define AUTHORS "Punit Sai Arani, Neha Balamurugan, Siddhesh Nair, Arnav Sangelkar"
 #define DESCRIPTION "Project 2"
-
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR(AUTHORS);
 MODULE_DESCRIPTION(DESCRIPTION);
 
-
 // Default params
-static int buffSize = 0;
-static int prod = 0;
-static int cons = 0;
-static uid_t uuid = 0;
+int buffSize = 0;
+int prod = 0;
+int cons = 0;
+int uuid = 0;
 
 // Define params
-module_param(buffSize, int, 0644);  // The buffer size
-module_param(prod, int, 0644);      // number of producers(0 or 1)
-module_param(cons, int, 0644);      // number of consumers(a non-negative number)
-module_param(uuid, int, 0644);      // The UID of the user
-
+module_param(buffSize, int, 0644); // The buffer size
+module_param(prod, int, 0644);     // number of producers(0 or 1)
+module_param(cons, int, 0644);     // number of consumers(a non-negative number)
+module_param(uuid, int, 0644);     // The UID of the user
 
 // Semaphores
 struct semaphore empty;
@@ -40,162 +36,163 @@ struct semaphore mutex;
 
 // Counters
 size_t task_count = 0;
-long program_start_time = 0;
+int count1 = 0;
 
+struct task_struct *producers;
+struct task_struct *consumers;
+int error;
 
-// Task structs
-typedef struct task_struct TaskStruct;
-TaskStruct *producers;
-TaskStruct *consumers;
+// Struct Node
+struct node {
+  int pid;
+  int uuid;
+  int time;
+  int timeStart;
+  int itemNum;
+};
 
+// Buffer
+struct node buffer[1000];
 
-// Node struct
-typedef struct node {
-    int pid;
-    int uid;
-    int item_num;
-    long time;
-    long start_time;
-} Node;
+// Buffer position trackers
+int in = 0;
+int out = 0;
 
-
-// Buffer linked list
-typedef struct buffer {
-    Node node;
-    struct buffer *next;
-} Buffer;
-
-// Buffer stack
-Buffer *buffer;
-
+// Global Time
+u64 tTime = 0;
 
 static int producer(void *arg) {
-    Node node;
-    TaskStruct *task;
+  struct node temp;
 
-    // Iterate through the task list
-    for_each_process(task) {
+  struct task_struct *task;
+  // Debug Tools
+  // printk(KERN_INFO "PRODUCER STARTED");
+  // printk(KERN_INFO "%d", buffSize);
 
-        // Check if the task uid matches
-        if (task->cred->uid.val == uuid) {
-            // Semaphore down
-            down_interruptible(&empty);
-            down_interruptible(&mutex);
+  for_each_process(task) {
+    if (task->cred->uid.val == uuid) {
 
-            task_count ++;
+      task_count++;
 
-            // Fill node
-            node = (Node) {
-                .pid = task->pid,
-                .uid = task->cred->uid.val,
-                .item_num = task_count,
-                .time = 0,
-                .start_time = task->start_time
-            };
+      // Semaphore Updates
+      down_interruptible(&empty);
+      down_interruptible(&mutex);
 
-            // Add node to buffer
-            if (buffer == NULL) {
-                buffer->node = node;
-                buffer->next = NULL;
-            } else {
-                Buffer *next = buffer;
-                buffer->node = node;
-                buffer->next = next;
-            }
+      // assign values of the current producer task to temp
+      temp.pid = task->pid;
+      temp.itemNum = task_count;
+      temp.uuid = producers->cred->uid.val;
+      temp.time = 0;
+      temp.timeStart = producers->start_time;
 
-            // Print process info
-            printk(KERN_INFO "Producer-1 Produced Item#-%d at buffer index: %zu for PID:%d", node.item_num, task_count, node.pid);
+      // Update Total Time so that we can present it when the module is unloaded
 
-            // Semaphore up
-            up(&mutex);
-            up(&full);
+      buffer[in] = temp;
+
+      printk(KERN_INFO
+             "[Producer-1] Produced Item#-%d at buffer index: %d for PID: %d",
+             task_count, in, task->pid);
+      in = in + 1;
+
+      // Semaphore Updates
+      up(&mutex);
+      up(&full);
+    }
+  }
+  // Debug Tools
+  // printk(KERN_INFO "PRODUCER DONE");
+
+  return 0;
+}
+
+static int consumer(void *consumerData) {
+
+  // Consumer will run in a infinite loop unlike the producer
+  while (1) {
+
+    while (buffSize > 0) {
+
+      count1++;
+
+      // Semaphore Updates
+      down_interruptible(&full);
+      down_interruptible(&mutex);
+
+      struct node consume = buffer[out];
+
+      // Find when when this particular task was started and then assign it
+      for_each_process(consumers) {
+        if (consumers->pid == consume.pid) {
+          consume.time = ktime_get_ns() - consumers->start_time;
         }
-    }
+      }
 
-    return 0;
+      int elapsed = consume.time;
+      int hour = elapsed / 3600000000000;
+      elapsed = elapsed % 3600000000000;
+      int minute = elapsed / 60000000000;
+      elapsed = elapsed % 60000000000;
+      int second = elapsed / 1000000000;
+
+      out = (out++) % buffSize;
+      printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %d "
+                       "PID:%d Elapsed Time- %d:%d:%d",
+             consume.itemNum, out, consume.pid, hour, minute, second);
+
+      // Semaphore Updates
+      up(&mutex);
+      up(&empty);
+    }
+  }
+  return 0;
 }
 
+static int __init init_func(void) {
+  // Semaphore Initizaliations
+  sema_init(&empty, buffSize);
+  sema_init(&full, 0);
+  sema_init(&mutex, 1);
 
-static int consumer(void *data) {
-    Node node;
-    long hours, minutes, seconds;
+  if (prod) {
+    // Start the K-Thread for the producer task
+    producers = kthread_run(producer, NULL, "Producer Thread");
 
-    // Run until buffer is empty
-    while (true) {
-        while (buffSize) {
-            // Semaphore down
-            down_interruptible(&full);
-            down_interruptible(&mutex);
-
-            // Pop node from buffer
-            node = buffer->node;
-            buffer = buffer->next;
-
-            // Find the process and calculate elapsed time
-            for_each_process(consumers) {
-                if (consumers->pid == node.pid) {
-                    node.time = ktime_get_ns() - consumers->start_time;
-                }
-            }
-
-            // Convert nanoseconds to hours, minutes, and seconds
-            hours   = node.time / 3600000000000;
-            minutes = (node.time % 3600000000000) / 60000000000;
-            seconds = ((node.time % 3600000000000) % 60000000000) / 1000000000;
-
-            // Print process info
-            printk(KERN_INFO "Consumer-1 Consumed Item#-%d on buffer index: %d PID:%zu Elapsed Time- %zu:%zu:%zu", node.item_num, node.pid, node.time, hours, minutes, seconds);
-
-            // Semaphore up
-            up(&mutex);
-            up(&empty);
-        }
+    if (IS_ERR(producer)) {
+      printk(KERN_INFO "Error: cannot create thread producers. \n");
+      error = PTR_ERR(producer);
+      producers = NULL;
+      return error;
     }
+  }
 
-    return 0;
+  if (cons) {
+    // Start the K-Thread for the consumer task
+    consumers = kthread_run(consumer, NULL, "Consumer Thread");
+
+    if (IS_ERR(consumer)) {
+      printk(KERN_INFO "Error: cannot create thread consumers. \n");
+      error = PTR_ERR(consumer);
+      consumers = NULL;
+      return error;
+    }
+  }
+
+  return 0;
 }
 
+static void __exit exit_func(void) {
+  // Converted elapsed into human readable time
+  int elapsed = tTime;
+  int hour = elapsed / 3600000000000;
+  elapsed = elapsed % 3600000000000;
+  int minute = elapsed / 60000000000;
+  elapsed = elapsed % 60000000000;
+  int second = elapsed / 1000000000;
 
-int init_module(void) {
-    // Initialize semaphores
-    sema_init(&empty, buffSize);
-    sema_init(&full, 0);
-    sema_init(&mutex, 1);
-
-    // Start the producer thread
-    producers = kthread_run(producer, NULL, "Producer-1");
-
-    // Start the consumer threads
-    for (int i = 0; i < cons; i++) {
-        char name[12];
-        sprintf(name, "Consumer-%d", i + 1);
-        consumers = kthread_run(consumer, NULL, name);
-    }
-
-    // Set the program start time
-    program_start_time = ktime_get_ns();
-    
-    return 0;
+  printk(KERN_INFO
+         "The total elapsed time for all processes for UID %d is %d:%d:%d\n",
+         uuid, hour, minute, second);
 }
 
-
-void cleanup_module(void) {
-    long elapsed, hours, minutes, seconds;
-
-    // Stop the producer thread
-    kthread_stop(producers);
-
-    // Stop the consumer threads
-    for (int i = 0; i < cons; i++) {
-        kthread_stop(consumers);
-    }
-
-    // Calculate the elapsed time
-    elapsed = ktime_get_ns() - program_start_time;
-    hours   = elapsed / 3600000000000;
-    minutes = (elapsed % 3600000000000) / 60000000000;
-    seconds = ((elapsed % 3600000000000) % 60000000000) / 1000000000;
-
-    // Print program info
-    printk(KERN_INFO "The total elapsed time of all processes for UID %d is %zu:%zu:%zu", uuid, hours, minutes, seconds);
-}
+module_init(init_func);
+module_exit(exit_func);
