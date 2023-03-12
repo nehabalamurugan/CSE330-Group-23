@@ -143,6 +143,9 @@ static int consumer(void *consumerData) {
 }
 
 static int __init init_func(void) {
+  // Set the global time
+  global_time = ktime_get_ns();
+
   // Semaphore Initizaliations
   sema_init(&empty, buffSize);
   sema_init(&full, 0);
@@ -176,7 +179,7 @@ static int __init init_func(void) {
 }
 
 static void __exit exit_func(void) {
-  int time = global_time;
+  int time = ktime_get_ns() - global_time;
   int hour = time / 3600000000000;
   int minute = (time % 3600000000000) / 60000000000;
   int second = (time % 60000000000) / 1000000000;
