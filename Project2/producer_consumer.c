@@ -89,12 +89,13 @@ static int producer(void *arg) {
 
       // Add the produced node to the buffer
       buffer[buffer_head] = produced;
-      buffer_head++;
 
       // Print the produced item information to the kernel log
       printk(KERN_INFO
              "[Producer-1] Produced Item#-%zu at buffer index: %zu for PID: %d",
              task_count, buffer_head, task->pid);
+
+      buffer_head = (buffer_head + 1) % buffSize;
 
       // Update the mutex and full semaphores
       // This unlocks the buffer
@@ -129,10 +130,11 @@ static int consumer(void *consumerData) {
       int minute = (time / (1000000000ULL * 60)) % 60;
       int second = (time / 1000000000ULL) % 60;
 
-      buffer_tail = (buffer_tail++) % buffSize;
       printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %zu "
                        "PID:%d Elapsed Time- %d:%d:%d",
              consumed.itemNum, buffer_tail, consumed.pid, hour, minute, second);
+
+      buffer_tail = (buffer_tail + 1) % buffSize;
 
       // Update the mutex and empty semaphores
       // This unlocks the buffer
