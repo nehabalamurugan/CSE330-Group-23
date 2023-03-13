@@ -153,26 +153,19 @@ static int __init init_func(void) {
   sema_init(&mutex, 1);
 
   if (prod) {
-    // Start the K-Thread for the producer task
     producers = kthread_run(producer, NULL, "Producer Thread");
 
     if (IS_ERR(producer)) {
-      printk(KERN_INFO "Error: cannot create thread producers. \n");
-      error = PTR_ERR(producer);
-      producers = NULL;
+      printk(KERN_INFO "Error creating producer thread. \n");
       return error;
     }
   }
 
   if (cons) {
-    // Start the K-Thread for the consumer task
     consumers = kthread_run(consumer, NULL, "Consumer Thread");
 
     if (IS_ERR(consumer)) {
-      printk(KERN_INFO "Error: cannot create thread consumers. \n");
-      error = PTR_ERR(consumer);
-      consumers = NULL;
-      return error;
+      printk(KERN_INFO "Error creating consumer thread. \n");
     }
   }
 
