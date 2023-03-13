@@ -3,6 +3,7 @@
 
 #include <linux/kernel.h>
 #include <linux/kthread.h>
+#include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/sched.h>
@@ -61,7 +62,7 @@ size_t buffer_head = 0;
 size_t buffer_tail = 0;
 
 // Global Time
-size_t global_time = 0;
+unsigned long long global_time = 0;
 
 static int producer(void *arg) {
   Node produced;
@@ -124,9 +125,9 @@ static int consumer(void *consumerData) {
       }
 
       int time = consumed.time;
-      int hour = time / 3600000000000;
-      int minute = (time % 3600000000000) / 60000000000;
-      int second = (time % 60000000000) / 1000000000;
+      int hour = (time / (1000000000ULL * 3600)) % 24;
+      int minute = (time / (1000000000ULL * 60)) % 60;
+      int second = (time / 1000000000ULL) % 60;
 
       buffer_tail = (buffer_tail++) % buffSize;
       printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %zu "
@@ -179,10 +180,10 @@ static int __init init_func(void) {
 }
 
 static void __exit exit_func(void) {
-  int time = ktime_get_ns() - global_time;
-  int hour = time / 3600000000000;
-  int minute = (time % 3600000000000) / 60000000000;
-  int second = (time % 60000000000) / 1000000000;
+  unsigned long long time = ktime_get_ns() - global_time;
+  int hour = (time / (1000000000ULL * 3600)) % 24;
+  int minute = (time / (1000000000ULL * 60)) % 60;
+  int second = (time / 1000000000ULL) % 60;
 
   printk(KERN_INFO
          "The total elapsed time for all processes for UID %d is %d:%d:%d\n",
