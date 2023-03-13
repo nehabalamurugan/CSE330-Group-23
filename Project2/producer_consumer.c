@@ -57,7 +57,7 @@ typedef struct node {
 } Node;
 
 // Buffer
-Node buffer[1000];
+Node buffer[1024];
 size_t buffer_head = 0;
 size_t buffer_tail = 0;
 
