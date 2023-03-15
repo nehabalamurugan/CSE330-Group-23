@@ -121,7 +121,7 @@ static int consumer(void *consumerData) {
     while (buffer_head >= 0) {
       Node consumed = buffer[buffer_head];
 
-      unsigned long long time = ktime_get_ns() - consumed->timeStart;
+      unsigned long long time = ktime_get_ns() - consumed.timeStart;
 
       global_time = global_time + time; //adding the time to the global time
 
