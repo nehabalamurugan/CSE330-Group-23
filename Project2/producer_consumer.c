@@ -64,7 +64,7 @@ TaskStruct *prod_thread;
 TaskStructLL *cons_threads = NULL;
 
 // Global Variables
-size_t total_time = 0;
+size_t total_seconds = 0;
 size_t total_consumed = 0;
 
 // producer function
@@ -141,7 +141,7 @@ static int consumer(void *consumerData) {
       int second = (seconds % 3600) % 60; 
 
       // Update the total time and consumed count
-      total_time += seconds;
+      total_seconds += seconds;
       total_consumed++;
 
       // Print the consumed item information to the kernel log
@@ -222,7 +222,7 @@ static void __exit exit_func(void) {
   }
   kfree(buffer);
 
-  u64 seconds = total_time / 1000000000;
+  u64 seconds = total_seconds;
   int hour = seconds / 3600;
   int minute = (seconds % 3600) / 60;
   int second = (seconds % 3600) % 60;
