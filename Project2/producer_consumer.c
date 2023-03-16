@@ -122,7 +122,7 @@ static int consumer(void *consumerData) {
   // Run the consumer task forever
   // Monitors the buffer and consumes items as they are produced
   while (!kthread_should_stop()) {
-    if (down_interruptible(&empty) && down_interruptible(&mutex)) {
+    if (down_interruptible(&full) && down_interruptible(&mutex)) {
       break;
     }
 
