@@ -64,8 +64,8 @@ TaskStruct *prod_thread;
 TaskStructLL *cons_threads = NULL;
 
 // Global Variables
-int total_time = 0;
-int total_consumed = 0;
+size_t total_time = 0;
+size_t total_consumed = 0;
 
 // producer function
 static int producer(void *arg) {
@@ -145,7 +145,7 @@ static int consumer(void *consumerData) {
       total_consumed++;
 
       // Print the consumed item information to the kernel log
-      printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %zu "
+      printk(KERN_INFO "[Consumer] Consumed Item#-%zu on buffer index: %zu "
                        "PID:%d Elapsed Time- %d:%d:%d",
              total_consumed, buffer->capacity, consumed->task->pid, hour,
              minute, second);
@@ -212,27 +212,15 @@ static int __init init_func(void) {
 static void __exit exit_func(void) {
   TaskStructLL *temp_buffer;
   TaskStructLL *temp_cons;
-  
+
   // Free the buffer
   temp_buffer = buffer->task_list;
   while (temp_buffer != NULL) {
     TaskStructLL *free_buffer = temp_buffer;
     temp_buffer = temp_buffer->next;
-    kfree(temp_buffer);
+    kfree(free_buffer);
   }
   kfree(buffer);
-
-  // Stop the producer thread
-  kthread_stop(prod_thread);
-
-  // Stop the consumer threads
-  temp_cons = cons_threads;
-  while (temp_cons != NULL) {
-    TaskStructLL *free_cons = temp_cons;
-    temp_cons = temp_cons->next;
-    kthread_stop(free_cons->task);
-    kfree(free_cons);
-  }
 
   u64 seconds = total_time / 1000000000;
   int hour = seconds / 3600;
