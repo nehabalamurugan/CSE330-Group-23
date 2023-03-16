@@ -1,6 +1,7 @@
 // CSE 330 Project 2
 // Group 23
 
+#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
 #include <linux/ktime.h>
@@ -9,6 +10,7 @@
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
 #include <linux/semaphore.h>
+#include <linux/slab.h>
 #include <linux/types.h>
 
 #define AUTHORS                                                                \
@@ -36,138 +38,171 @@ struct semaphore empty;
 struct semaphore full;
 struct semaphore mutex;
 
-// Counters
-size_t task_count = 0;
-
-// Task structs
+// Task Struct
 typedef struct task_struct TaskStruct;
-TaskStruct *producers;
-TaskStruct *consumers;
 
 // Error variable
 int error;
 
-// Struct Node
-typedef struct node {
-  int pid;
-  int uuid;
-  int timeStart;
-  int itemNum;
-} Node;
+// Task Struct Linked List
+typedef struct task_struct_ll {
+  struct task_struct *task;
+  struct task_struct_ll *next;
+} TaskStructLL;
 
-// Buffer
-Node buffer[1024];
-size_t buffer_head = 0;
-size_t buffer_tail = 0;
+// Buffer Linked List
+typedef struct buffer_ll {
+  struct task_struct_ll *task_list;
+  size_t capacity;
+} BufferLL;
 
-//consumers array
-TaskStruct *consumersArr[1024];
+// Initialize Buffer
+BufferLL *buffer = NULL;
 
-// Global Time
-unsigned long long global_time = 0;
+// Kernel Thread Structs
+TaskStruct *prod_thread;
+TaskStructLL *cons_threads = NULL;
 
+// Global Variables
+int total_time = 0;
+int total_consumed = 0;
+
+// producer function
 static int producer(void *arg) {
-  Node produced;
   TaskStruct *task;
-    
-    //Check if the buffer is locked
-    if(down_interruptible(&empty) && down_interruptible(&mutex)){
-      return 0;
-    }
+  size_t task_count = 0;
 
-    for_each_process(task) {
-        if (task->cred->uid.val == uuid) {
-          task_count++;
+  for_each_process(task) {
+    if (task->cred->uid.val == uuid) {
+      task_count++;
 
-          // Build the the produced node
-          produced.pid = task->pid;
-          produced.itemNum = task_count;
-          produced.uuid = task->cred->uid.val;
-          produced.timeStart = task->start_time;
-
-          // TODO: Update Total Time so that we can present it when the module is
-          // unloaded
-
-          // Add the produced node to the buffer
-          buffer[buffer_head] = produced;
-
-          // Print the produced item information to the kernel log
-          printk(KERN_INFO
-                "[Producer-1] Produced Item#-%zu at buffer index: %zu for PID: %d",
-                task_count, buffer_head, task->pid);
-
-          buffer_head++;
-        }
+      // Check if the buffer is locked
+      if (down_interruptible(&empty) || down_interruptible(&mutex)) {
+        break;
       }
-        // Update the mutex and full semaphores
-        // This unlocks the buffer
-        up(&mutex);
-        up(&full);
 
-        return 1;
+      // Create or Add to the buffer
+      if (buffer->task_list == NULL) {
+        buffer->task_list = kmalloc(sizeof(TaskStructLL), GFP_KERNEL);
+        buffer->task_list->task = task;
+        buffer->task_list->next = NULL;
+        buffer->capacity = 1;
+      } else {
+        // Traverse to the end of the buffer
+        TaskStructLL *temp = buffer->task_list;
+        while (temp->next != NULL) {
+          temp = temp->next;
+        }
+        temp->next = kmalloc(sizeof(TaskStructLL), GFP_KERNEL);
+        temp->next->task = task;
+        temp->next->next = NULL;
+        buffer->capacity++;
+      }
 
+      // Print the produced item information to the kernel log
+      printk(KERN_INFO
+             "[Producer-1] Produced Item#-%zu at buffer index: %zu for PID: %d",
+             task_count, buffer->capacity, task->pid);
+
+      // Update the mutex and full semaphores
+      // This unlocks the buffer
+      up(&mutex);
+      up(&full);
+    }
+  }
+
+  return 0;
 }
 
+// consumer function
 static int consumer(void *consumerData) {
+  TaskStructLL *consumed;
+  size_t consumed_count = 0;
+
   // Run the consumer task forever
   // Monitors the buffer and consumes items as they are produced
+  while (!kthread_should_stop()) {
+    if (down_interruptible(&empty) && down_interruptible(&mutex)) {
+      break;
+    }
 
-  if(down_interruptible(&empty) && down_interruptible(&mutex)){
-      return 0;
-  }
-  
-  while(!kthread_should_stop()){
+    if (buffer != NULL && buffer->task_list != NULL && buffer->capacity > 0) {
+      consumed = buffer->task_list;
 
-    while (buffer_head >= 0) {
-      Node consumed = buffer[buffer_head];
+      // Remove the first item from the buffer
+      buffer->task_list = buffer->task_list->next;
+      buffer->capacity--;
 
-      unsigned long long time = ktime_get_ns() - consumed.timeStart;
+      // Get the time of the consumed item
+      u64 time = ktime_get_ns() - consumed->task->start_time;
+      u64 seconds = time / 1000000000;
+      int hour = seconds / 3600;
+      int minute = (seconds % 3600) / 60;
+      int second = (seconds % 3600) % 60; 
 
-      global_time = global_time + time; //adding the time to the global time
+      // Update the total time and consumed count
+      total_time += seconds;
+      total_consumed++;
 
-      int hour = time / 3600000000000;
-      time = time % 3600000000000;
-      int minute = time / 60000000000;
-      time = time % 60000000000;
-      int second = time / 1000000000;
-
+      // Print the consumed item information to the kernel log
       printk(KERN_INFO "[Consumer] Consumed Item#-%d on buffer index: %zu "
                        "PID:%d Elapsed Time- %d:%d:%d",
-             consumed.itemNum, buffer_head, consumed.pid, hour, minute, second);
+             total_consumed, buffer->capacity, consumed->task->pid, hour,
+             minute, second);
 
-      buffer_head--;
-    }
-  }
+      // Free the consumed item
+      consumed_count++;
+
       // Update the mutex and empty semaphores
       // This unlocks the buffer
       up(&mutex);
       up(&empty);
-
-  return 1;
+    }
+  }
+  return 0;
 }
 
 static int __init init_func(void) {
-  // Set the global time
-  global_time = 0;
-
   // Semaphore Initizaliations
   sema_init(&empty, buffSize);
   sema_init(&full, 0);
   sema_init(&mutex, 1);
 
-  if(prod){
-    producers = kthread_run(producer, NULL, "Producer Thread");
-    if (IS_ERR(producer)) {
+  // Initialize the buffer
+  buffer = kmalloc(sizeof(BufferLL), GFP_KERNEL);
+
+  // Start the producer thread
+  if (prod) {
+    prod_thread = kthread_run(producer, NULL, "Producer-1");
+    if (IS_ERR(prod_thread)) {
       printk(KERN_INFO "Error creating producer thread. \n");
-      return error;
+      return PTR_ERR(prod_thread);
     }
   }
 
-  for(int i = 0; i < cons; i++){
-    consumersArr[i] = kthread_run(consumer, NULL, "Consumer Thread");
-
-    if (IS_ERR(consumer)) {
+  // Start the consumer threads
+  TaskStruct *cons_thread;
+  for (int i = 0; i < cons; i++) {
+    cons_thread = kthread_run(consumer, NULL, "Consumer");
+    if (IS_ERR(cons_thread)) {
       printk(KERN_INFO "Error creating consumer thread. \n");
+      return PTR_ERR(cons_thread);
+    }
+
+    // Add the consumer thread to the list
+    if (cons_threads == NULL) {
+      cons_threads = kmalloc(sizeof(TaskStructLL), GFP_KERNEL);
+      cons_threads->task = cons_thread;
+      cons_threads->next = NULL;
+    } else {
+      // Traverse to the end of the list
+      TaskStructLL *temp = cons_threads;
+      while (temp->next != NULL) {
+        temp = temp->next;
+      }
+      temp->next = kmalloc(sizeof(TaskStructLL), GFP_KERNEL);
+      temp->next->task = cons_thread;
+      temp->next->next = NULL;
     }
   }
 
@@ -175,29 +210,38 @@ static int __init init_func(void) {
 }
 
 static void __exit exit_func(void) {
-  unsigned long long time = global_time;
+  TaskStructLL *temp_buffer;
+  TaskStructLL *temp_cons;
+  
+  // Free the buffer
+  temp_buffer = buffer->task_list;
+  while (temp_buffer != NULL) {
+    TaskStructLL *free_buffer = temp_buffer;
+    temp_buffer = temp_buffer->next;
+    kfree(temp_buffer);
+  }
+  kfree(buffer);
 
-  int hour = time / 3600000000000;
-  time = time % 3600000000000;
-  int minute = time / 60000000000;
-  time = time % 60000000000;
-  int second = time / 1000000000;
+  // Stop the producer thread
+  kthread_stop(prod_thread);
+
+  // Stop the consumer threads
+  temp_cons = cons_threads;
+  while (temp_cons != NULL) {
+    TaskStructLL *free_cons = temp_cons;
+    temp_cons = temp_cons->next;
+    kthread_stop(free_cons->task);
+    kfree(free_cons);
+  }
+
+  u64 seconds = total_time / 1000000000;
+  int hour = seconds / 3600;
+  int minute = (seconds % 3600) / 60;
+  int second = (seconds % 3600) % 60;
 
   printk(KERN_INFO
          "The total elapsed time for all processes for UID %d is %d:%d:%d\n",
          uuid, hour, minute, second);
-
-  //release locks
-  up(&mutex);
-  up(&empty);
-  up(&full);
-
-  // Stop the threads
-  kthread_stop(producers);
-  for(int i = 0; i < cons; i++){
-    kthread_stop(consumersArr[i]);
-  }
-
 }
 
 module_init(init_func);
