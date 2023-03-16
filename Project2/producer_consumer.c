@@ -147,7 +147,7 @@ static int consumer(void *consumerData) {
       // Print the consumed item information to the kernel log
       printk(KERN_INFO "[Consumer] Consumed Item#-%zu on buffer index: %zu "
                        "PID:%d Elapsed Time- %d:%d:%d",
-             total_consumed, buffer->capacity, consumed->task->pid, hour,
+             total_consumed, consumed_count, consumed->task->pid, hour,
              minute, second);
 
       // Free the consumed item
