@@ -34,87 +34,155 @@ struct task_struct *task;
 unsigned long timer_interval_ns = 10e9; // 10-second timer
 static struct hrtimer hr_timer;
 
-pte_t *pteFinder(const struct mm_struct *const mm, const unsigned long address)
+/**
+ * Finds the page table entry (pte) for a given virtual address in the provided
+ * memory management structure (mm_struct).
+ *
+ * @param mm: Pointer to the mm_struct where the address translation is performed.
+ * @param virt_addr: The virtual address for which the corresponding pte is needed.
+ *
+ * @return pte_t*: Pointer to the pte_t structure for the given virtual address.
+ *                 Returns NULL if any intermediate table entry is bad or doesn't exist,
+ *                 or if the mm_struct pointer is NULL.
+ */
+pte_t *find_page_table_entry(const struct mm_struct *const mm, const unsigned long virt_addr)
 {
-    pgd_t *pgd;
-    p4d_t *p4d;
-    pmd_t *pmd;
-    pud_t *pud;
-    pte_t *ptep;
-
-    pgd = pgd_offset(mm, address); // get pgd from mm and the page address
-    if (pgd_none(*pgd) || pgd_bad(*pgd))
-    { // check if pgd is bad or does not exist
-        return ptep;
-    }
-
-    p4d = p4d_offset(pgd, address); // get p4d from from pgd and the page address
-    if (p4d_none(*p4d) || p4d_bad(*p4d))
-    { // check if p4d is bad or does not exist
-        return ptep;
-    }
-
-    pud = pud_offset(p4d, address); // get pud from from p4d and the page address
-    if (pud_none(*pud) || pud_bad(*pud))
-    { // check if pud is bad or does not exist
-        return ptep;
-    }
-
-    pmd = pmd_offset(pud, address); // get pmd from from pud and the page address
-    if (pmd_none(*pmd) || pmd_bad(*pmd))
-    { // check if pmd is bad or does not exist
-        return ptep;
-    }
-
-    ptep = pte_offset_map(pmd, address); // get pte from pmd and the page address
-    if (!ptep)
-    { // check if pte does not exist
-        return ptep;
-    }
-
-    if (pte_present(*ptep))
+    // Handle NULL pointer mm_struct input
+    if (!mm)
     {
-        RSS = RSS + 4;
-    }
-    else
-    {
-        SWAP = SWAP + 4;
+        return NULL;
     }
 
-    return ptep;
+    pgd_t *page_global_dir;
+    p4d_t *page_4_level_dir;
+    pmd_t *page_middle_dir;
+    pud_t *page_upper_dir;
+    pte_t *page_table_entry = NULL;
+
+    // Get the page global directory entry
+    page_global_dir = pgd_offset(mm, virt_addr);
+    if (pgd_none(*page_global_dir) || pgd_bad(*page_global_dir))
+    {
+        return NULL;
+    }
+
+    // Get the 4-level page table directory entry
+    page_4_level_dir = p4d_offset(page_global_dir, virt_addr);
+    if (p4d_none(*page_4_level_dir) || p4d_bad(*page_4_level_dir))
+    {
+        return NULL;
+    }
+
+    // Get the page upper directory entry
+    page_upper_dir = pud_offset(page_4_level_dir, virt_addr);
+    if (pud_none(*page_upper_dir) || pud_bad(*page_upper_dir))
+    {
+        return NULL;
+    }
+
+    // Get the page middle directory entry
+    page_middle_dir = pmd_offset(page_upper_dir, virt_addr);
+    if (pmd_none(*page_middle_dir) || pmd_bad(*page_middle_dir))
+    {
+        return NULL;
+    }
+
+    // Get the page table entry for the given virtual address
+    page_table_entry = pte_offset_map(page_middle_dir, virt_addr);
+    if (!page_table_entry)
+    {
+        return NULL;
+    }
+
+    return page_table_entry;
 }
 
+/**
+ * Tests and clears the "young" (accessed) bit in the given page table entry (pte).
+ * Returns whether the bit was set before being cleared.
+ *
+ * @param vma: Pointer to the vm_area_struct containing the memory mapping information.
+ * @param addr: The virtual address of the page corresponding to the pte.
+ * @param pte_ptr: Pointer to the pte_t structure to test and clear the young bit.
+ *
+ * @return int: 1 if the young bit was set before being cleared, 0 otherwise.
+ */
 int ptep_test_and_clear_young(struct vm_area_struct *vmas, unsigned long addr, pte_t *ptep)
 {
     int ret = 0;
+
     if (pte_young(*ptep))
+    {
         ret = test_and_clear_bit(_PAGE_BIT_ACCESSED, (unsigned long *)&ptep->pte);
+    }
+
     return ret;
 }
 
-void pageWalkthrough(struct task_struct *taskParam)
+/**
+ * Performs a page table walk for a given task and updates the working set size (WSS).
+ * This function iterates through all the virtual memory areas (VMAs) of a task,
+ * finding the page table entries (PTEs) for each address, and checks if the pages
+ * have been accessed recently.
+ *
+ * @param task: Pointer to the task_struct for which the page table walk is performed.
+ */
+void perform_page_table_walk(struct task_struct *task)
 {
-    if (taskParam)
+    // Handle NULL pointer task_struct input
+    if (!task)
     {
-        const struct mm_struct *mma = taskParam->mm;
-        const struct vm_area_struct *vmas = mma->mmap;
-        while (vmas)
+        return;
+    }
+
+    // Get the mm_struct for the given task
+    const struct mm_struct *mm = task->mm;
+
+    // Get the first VMA for the given task
+    const struct vm_area_struct *vma = mm->mmap;
+
+    // Initialize the WSS to 0
+    unsigned long WSS = 0;
+
+    // Iterate through all the VMAs of the given task
+    while (vma)
+    {
+        unsigned long address;
+        for (address = vma->vm_start; address < vma->vm_end; address += PAGE_SIZE)
         {
-            unsigned long address;
-            for (address = vmas->vm_start; address < vmas->vm_end; address += PAGE_SIZE)
+            pte_t *pte = find_page_table_entry(mm, address);
+            int was_accessed = ptep_test_and_clear_young(vma, address, pte);
+
+            // Increase the working set size by 4 bytes (size of a pte_t)
+            if (was_accessed)
             {
-                pte_t *pte = pteFinder(mma, address);
-                int wasAccessed = ptep_test_and_clear_young(vmas, address, pte);
-                if (wasAccessed)
-                {
-                    WSS = WSS + 4;
-                }
+                WSS += 4;
             }
-            vmas = vmas->vm_next;
         }
+        vma = vma->vm_next;
     }
 }
 
+/**
+ * Restart callback function for an hrtimer. This function is called when the timer
+ * expires, and it reschedules the timer based on a predefined interval.
+ *
+ * @param timer_for_restart: Pointer to the hrtimer that expired and needs to be restarted.
+ *
+ * @return enum hrtimer_restart: Always returns HRTIMER_RESTART, indicating that the timer
+ *                                should be restarted with the updated expiration time.
+ *
+ * @note
+ * In this implementation, the callback function performs the following tasks:
+ *   1. Gets the current time.
+ *   2. Sets the interval for the timer's next expiration.
+ *   3. Updates the timer's expiration time to the new interval.
+ *   4. Finds the task_struct for the given PID.
+ *   5. Performs a page table walk for the task and updates the working set size (WSS).
+ *   6. Prints the task's PID, resident set size (RSS), swap usage, and WSS.
+ *   7. Resets the RSS, WSS, and swap usage values.
+ *
+ */
 enum hrtimer_restart restart_callback(struct hrtimer *timer_for_restart)
 {
     ktime_t currtime, interval;
@@ -122,18 +190,17 @@ enum hrtimer_restart restart_callback(struct hrtimer *timer_for_restart)
     interval = ktime_set(0, timer_interval_ns);
     hrtimer_forward(timer_for_restart, currtime, interval);
 
-    // WALKING PAGES
     task = pid_task(find_vpid(pid), PIDTYPE_PID);
     pageWalkthrough(task);
     printk("PID-%d: RSS = %u KB SWAP = %u KB WSS = %u KB", pid, RSS, SWAP, WSS);
     RSS = 0;
     WSS = 0;
     SWAP = 0;
-    // -----------
 
     return HRTIMER_RESTART;
 }
 
+// Initialize
 static int __init initialize(void)
 {
     ktime_t ktime;
@@ -144,6 +211,7 @@ static int __init initialize(void)
     return 0;
 }
 
+// Exit module
 static void __exit clean_exit(void)
 {
     int ret;
